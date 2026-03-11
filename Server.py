@@ -11,6 +11,7 @@ server.listen()
 
 print("--- SERVER STARTED ---")
 print("Waiting for players . . .")
+print("PORT:", PORT)
 waiting_player = None
 lock = threading.Lock()
 
@@ -70,14 +71,17 @@ class Session:
 def accept_players():
     global waiting_player
     while True:
-        conn, addr = server.accept()
-        print("Player connected :)", addr)
-        with lock:
-            if waiting_player is None:
-                waiting_player = conn
-                conn.send("INFO|Waiting for opponent . . .".encode())
-            else:
-                Session(waiting_player, conn)
-                waiting_player = None
+        try:
+            conn, addr = server.accept()
+            print("Player connected :)", addr)
+            with lock:
+                if waiting_player is None:
+                    waiting_player = conn
+                    conn.send("INFO|Waiting for opponent . . .".encode())
+                else:
+                    Session(waiting_player, conn)
+                    waiting_player = None
+        except:
+            print("Connection error . . .")
 
 accept_players()

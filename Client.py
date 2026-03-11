@@ -19,7 +19,6 @@ class TicTic:
         self.buttons = []
 
         for i in range(9):
-
             btn = tk.Button(
                 frame,
                 text=" ",
@@ -27,13 +26,13 @@ class TicTic:
                 height=3,
                 command=lambda i=i: self.send_move(i)
             )
-            btn.grid(row=i//3 + 1, column=i % 3)
+            btn.grid(row=i // 3 + 1, column=i % 3)
             self.buttons.append(btn)
         self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             self.client.connect((HOST, PORT))
         except:
-            messagebox.showerror("Error", "Server is not running")
+            messagebox.showerror("Error", "Server is not running . . .")
             root.destroy()
             return
         threading.Thread(target=self.receive, daemon=True).start()
@@ -56,6 +55,12 @@ class TicTic:
                         0,
                         lambda: self.info.config(text=f"You are {symbol}")
                     )
+                elif data.startswith("INFO"):
+                    text = data.split("|")[1]
+                    self.root.after(
+                        0,
+                        lambda: self.info.config(text=text)
+                    )
                 elif data.startswith("BOARD"):
                     board = data.split("|")[1].split(",")
                     for i in range(9):
@@ -66,9 +71,9 @@ class TicTic:
                 elif data.startswith("WIN"):
                     winner = data.split("|")[1]
                     if winner == "DRAW":
-                        msg = "Draw!"
+                        msg = "Draw :("
                     else:
-                        msg = f"{winner} wins!"
+                        msg = f"{winner} wins :)"
                     self.root.after(
                         0,
                         lambda: messagebox.showinfo("Game Over", msg)
@@ -76,6 +81,7 @@ class TicTic:
                     break
             except:
                 break
+
 root = tk.Tk()
 TicTic(root)
 root.mainloop()

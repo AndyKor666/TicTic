@@ -4,16 +4,18 @@ import json
 import os
 from cryptography.fernet import Fernet
 import config
-
 cipher = Fernet(config.FERNET_KEY)
 
 def load_users():
     if not os.path.exists(config.USERS_FILE): return {}
-    if not os.path.exists(config.USERS_FILE): return {}
-    with open(config.USERS_FILE, "r") as f: return json.load(f)
-
+    with open(config.USERS_FILE, "r") as f:
+        try:
+            return json.load(f)
+        except:
+            return {}
 def save_users(users_dict):
-    with open(config.USERS_FILE, "w") as f: json.dump(users_dict, f)
+    with open(config.USERS_FILE, "w") as f: json.dump(users_dict, f, indent=4)
+
 users = load_users()
 lock = threading.Lock()
 waiting_conn, waiting_email = None, None
@@ -66,42 +68,47 @@ class Session:
                         res = self.check()
                         if res:
                             self.broadcast("WIN|" + res)
-                            break
+                            return
             except:
                 break
         conn.close()
 
 def client_handler(conn):
-    global waiting_conn, waiting_email
+    global waiting_conn, waiting_email, users
     email, buffer = None, ""
+
     while not email:
         try:
             data = conn.recv(16384).decode()
             if not data: return
             buffer += data
-            if "\n" in buffer:
+            while "\n" in buffer:
                 raw_msg, buffer = buffer.split("\n", 1)
                 msg = cipher.decrypt(raw_msg.encode()).decode()
-
                 if msg.startswith("REGISTER"):
                     _, em, hashed_ps = msg.split("|")
+                    users = load_users()
                     if em in users:
                         send_secure_msg(conn, "ERROR|Exists")
                     else:
-                        users[em] = {"password": hashed_ps, "photo": ""}
+                        users[em] = {"password": hashed_ps, "photo": "", "banned": False}
                         save_users(users)
                         send_secure_msg(conn, "OK|Registered")
 
                 elif msg.startswith("LOGIN"):
                     _, em, hashed_ps = msg.split("|")
+                    users = load_users()
                     if em in users and users[em]["password"] == hashed_ps:
+                        if users[em].get("banned", False):
+                            send_secure_msg(conn, "ERROR|You are banned! >:(")
+                            conn.close()
+                            return
                         send_secure_msg(conn, "OK|Success")
                         email = em
                     else:
                         send_secure_msg(conn, "ERROR|Fail")
         except:
             return
-
     if users[email]["photo"] == "":
         send_secure_msg(conn, "PHOTO_REQUIRED")
         try:
@@ -120,7 +127,6 @@ def client_handler(conn):
                     break
         except:
             return
-
     with lock:
         if waiting_conn is None:
             waiting_conn, waiting_email = conn, email
@@ -135,7 +141,7 @@ def start_server():
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind((config.HOST, config.PORT))
     server.listen()
-    print("--- SECURE SERVER RUNNING ---")
+    print("--- SERVER RUNNING ---")
     while True:
         conn, _ = server.accept()
         threading.Thread(target=client_handler, args=(conn,), daemon=True).start()

@@ -13,7 +13,7 @@ cipher = Fernet(config.FERNET_KEY)
 class TicTic:
     def __init__(self, root):
         self.root = root
-        self.root.title("TicTic (Secure)")
+        self.root.title("TicTic")
         self.root.geometry("300x200")
         self.root.configure(bg="#d4d0c8")
         self.symbol = None

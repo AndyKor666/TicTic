@@ -5,10 +5,17 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="99545874-063f-409d-b619-27fe00949af0" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/security.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Admin panel/.vs/Admin panel/FileContentIndex/70a7c76b-d582-4ef6-8fcf-5cee02f4557b.vsidx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Admin panel/.vs/Admin panel/v17/.suo" beforeDir="false" afterPath="$PROJECT_DIR$/Admin panel/.vs/Admin panel/v17/.suo" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Admin panel/.vs/Admin panel/v17/DocumentLayout.backup.json" beforeDir="false" afterPath="$PROJECT_DIR$/Admin panel/.vs/Admin panel/v17/DocumentLayout.backup.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Admin panel/.vs/Admin panel/v17/DocumentLayout.json" beforeDir="false" afterPath="$PROJECT_DIR$/Admin panel/.vs/Admin panel/v17/DocumentLayout.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Admin panel/Admin panel/Admin panel.pyproj" beforeDir="false" afterPath="$PROJECT_DIR$/Admin panel/Admin panel/Admin panel.pyproj" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Admin panel/Admin panel/Admin_panel.py" beforeDir="false" afterPath="$PROJECT_DIR$/Admin panel/Admin panel/Admin_panel.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Client.py" beforeDir="false" afterPath="$PROJECT_DIR$/Client.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Server.py" beforeDir="false" afterPath="$PROJECT_DIR$/Server.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/users.json" beforeDir="false" afterPath="$PROJECT_DIR$/users.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -55,9 +62,12 @@
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
     "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Python.Admin_panel.executor": "Run",
     "Python.Client.executor": "Run",
     "Python.Secret.executor": "Run",
     "Python.Server.executor": "Run",
+    "Python.config.executor": "Run",
+    "Python.security.executor": "Run",
     "RunOnceActivity.MCP Project settings loaded": "true",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",

@@ -90,6 +90,8 @@ class TicTic:
                         self.root.after(0, lambda r=res: messagebox.showinfo("GAME OVER", r))
                     elif msg.startswith("ERROR"):
                         messagebox.showerror("ERR", msg.split("|")[1])
+                    elif msg.startswith("OK"):
+                        pass
             except:
                 break
 

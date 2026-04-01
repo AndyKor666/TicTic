@@ -64,7 +64,7 @@ class AdminPanel:
         self.tree.pack(fill="x", padx=10, pady=(0, 10))
         self.tree.bind("<<TreeviewSelect>>", self.on_user_select)
 
-        tk.Label(root, text="Match History (Selected User):", bg="#2b2b2b", fg="white").pack(anchor="w", padx=10)
+        tk.Label(root, text="Match History (Double-click to view details):", bg="#2b2b2b", fg="white").pack(anchor="w", padx=10)
         
         self.history_tree = ttk.Treeview(root, columns=("id", "date", "opponent", "result"), show="headings", height=8)
         self.history_tree.heading("id", text="ID")
@@ -77,6 +77,8 @@ class AdminPanel:
         self.history_tree.column("opponent", width=150, anchor="center")
         self.history_tree.column("result", width=100, anchor="center")
         self.history_tree.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        self.history_tree.bind("<Double-1>", self.show_match_details)
         self.load_users()
 
     def get_conn(self):
@@ -87,9 +89,7 @@ class AdminPanel:
             self.history_tree.delete(item)
             
         selected = self.tree.selection()
-        if not selected:
-            return
-            
+        if not selected: return
         login = self.tree.item(selected[0])['values'][0]
 
         try:
@@ -105,23 +105,85 @@ class AdminPanel:
                 for row in cursor.fetchall():
                     m_id, m_date, p1, p2, result = row
                     opponent = p2 if p1 == login else p1
-                    if result == "DRAW":
-                        user_result = "Draw"
-                    elif result == login:
-                        user_result = "WIN"
-                    else:
-                        user_result = "LOSS"
+                    if result == "DRAW": user_result = "Draw"
+                    elif result == login: user_result = "WIN"
+                    else: user_result = "LOSS"
+                    
                     date_str = str(m_date).split('.')[0] if m_date else "N/A"
-                    
                     self.history_tree.insert("", "end", values=(m_id, date_str, opponent, user_result))
-                    
-        except pyodbc.Error as e:
+        except pyodbc.Error:
             pass 
+
+    def show_match_details(self, event):
+        selected_match = self.history_tree.selection()
+        if not selected_match: return
+        
+        m_id = self.history_tree.item(selected_match[0])['values'][0]
+        opponent_login = self.history_tree.item(selected_match[0])['values'][2]
+
+        try:
+            with self.get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT Player1, Player2, MoveHistory FROM Matches WHERE Id=?", (m_id,))
+                match_data = cursor.fetchone()
+                cursor.execute("SELECT Result FROM Matches WHERE Player1=? OR Player2=?", (opponent_login, opponent_login))
+                opp_matches = cursor.fetchall()
+                
+                total_games = len(opp_matches)
+                wins = sum(1 for row in opp_matches if row[0] == opponent_login)
+                draws = sum(1 for row in opp_matches if row[0] == "DRAW")
+                losses = total_games - wins - draws
+
+        except Exception as e:
+            messagebox.showerror("DB Error", str(e))
+            return
+
+        detail_win = tk.Toplevel(self.root)
+        detail_win.title(f"Match #{m_id} Details")
+        detail_win.geometry("400x400")
+        detail_win.configure(bg="#000956")
+
+        stat_frame = tk.LabelFrame(detail_win, text=f" OPPONENT STATUS: {opponent_login} ", bg="#000956", fg="white")
+        stat_frame.pack(fill="x", padx=10, pady=10)
+        
+        tk.Label(stat_frame, text=f"Total Games: {total_games}", bg="#000956", fg="white").pack(anchor="w", padx=10)
+        tk.Label(stat_frame, text=f"Wins: {wins}", bg="#000956", fg="white").pack(anchor="w", padx=10)
+        tk.Label(stat_frame, text=f"Losses: {losses}", bg="#000956", fg="white").pack(anchor="w", padx=10)
+        tk.Label(stat_frame, text=f"Draws: {draws}", bg="#000956", fg="white").pack(anchor="w", padx=10, pady=(0,5))
+
+ 
+        move_frame = tk.LabelFrame(detail_win, text=" MOVE RECORDS ", bg="#000956", fg="white")
+        move_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+        text_area = tk.Text(move_frame, bg="#000956", fg="white", font=("Consolas", 10), state="normal", width=40, height=10)
+        text_area.pack(padx=5, pady=5, fill="both", expand=True)
+
+        if match_data and match_data[2]:
+            p1, p2, moves_str = match_data
+            moves = moves_str.split(',')
+            
+            pos_map = {0:"Top-Left", 1:"Top-Center", 2:"Top-Right", 
+                       3:"Mid-Left", 4:"Center", 5:"Mid-Right", 
+                       6:"Bot-Left", 7:"Bot-Center", 8:"Bot-Right"}
+            
+            text_area.insert("end", f"Player X: {p1}\nPlayer O: {p2}\n")
+            text_area.insert("end", "-"*30 + "\n")
+            
+            for i, move_idx in enumerate(moves):
+                if not move_idx: continue
+                player_symbol = "X" if i % 2 == 0 else "O"
+                player_name = p1 if i % 2 == 0 else p2
+                pos_name = pos_map.get(int(move_idx), "Unknown")
+                
+                text_area.insert("end", f"Move {i+1}: {player_symbol} ({player_name}) -> {pos_name}\n")
+        else:
+            text_area.insert("end", "No move history available for this match.")
+            
+        text_area.configure(state="disabled")
 
     def load_users(self, search_query=""):
         for item in self.tree.get_children():
             self.tree.delete(item)
-            
         for item in self.history_tree.get_children():
             self.history_tree.delete(item)
             
@@ -138,7 +200,6 @@ class AdminPanel:
                     p_status = "OK :)" if photo else "NO :("
                     a_status = "BANNED >:(" if banned else "Active :)"
                     self.tree.insert("", "end", values=(login, p_status, a_status))
-
         except Exception as e:
             messagebox.showerror("DB Error", f"Failed to load: {e}")
 
@@ -160,7 +221,6 @@ class AdminPanel:
     def toggle_ban(self):
         login = self.get_selected_login()
         if not login: return
-        
         try:
             with self.get_conn() as conn:
                 cursor = conn.cursor()

@@ -11,6 +11,7 @@ conn_str = f'DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={server};DATABASE={
 
 def get_connection():
     return pyodbc.connect(conn_str)
+
 lock = threading.Lock()
 waiting_conn, waiting_login = None, None
 
@@ -35,6 +36,7 @@ class Session:
         self.symbols = ["X", "O"]
         self.board = [" "] * 9
         self.turn = 0
+        self.moves = []
 
         send_secure_msg(p1, f"START|X|{photo1}|{photo2}")
         send_secure_msg(p2, f"START|O|{photo2}|{photo1}")
@@ -47,10 +49,10 @@ class Session:
             send_secure_msg(p, msg)
 
     def check(self):
-        w = [(0,1,2),(3,4,5),(6,7,8),
-             (0,3,6),(1,4,7),(2,5,8),
-             (0,4,8),(2,4,6)]
-        for a,b,c in w:
+        w = [(0, 1, 2), (3, 4, 5), (6, 7, 8),
+             (0, 3, 6), (1, 4, 7), (2, 5, 8),
+             (0, 4, 8), (2, 4, 6)]
+        for a, b, c in w:
             if self.board[a] == self.board[b] == self.board[c] and self.board[a] != " ":
                 return self.board[a]
         return "DRAW" if " " not in self.board else None
@@ -73,8 +75,10 @@ class Session:
 
                     if self.turn == i and self.board[move] == " ":
                         self.board[move] = self.symbols[i]
+                        self.moves.append(str(move))  # <--- ЗАПИСЫВАЕМ ХОД
                         self.turn = 1 - self.turn
                         self.broadcast("BOARD|" + ",".join(self.board))
+
                         res = self.check()
                         if res:
                             self.broadcast("WIN|" + res)
@@ -83,18 +87,19 @@ class Session:
                                     cursor = conn_db.cursor()
                                     p1_login = self.players_login[0]
                                     p2_login = self.players_login[1]
+
                                     if res == "X":
                                         winner = p1_login
                                     elif res == "O":
                                         winner = p2_login
                                     else:
                                         winner = "DRAW"
+                                    move_history_str = ",".join(self.moves)
                                     cursor.execute(
-                                        "INSERT INTO Matches (Player1, Player2, Result) VALUES (?, ?, ?)",
-                                        (p1_login, p2_login, winner)
+                                        "INSERT INTO Matches (Player1, Player2, Result, MoveHistory) VALUES (?, ?, ?, ?)",
+                                        (p1_login, p2_login, winner, move_history_str)
                                     )
                                     conn_db.commit()
-
                             except Exception as e:
                                 print("MATCH SAVE ERROR:", e)
                             return
@@ -109,8 +114,7 @@ def client_handler(conn_socket):
     while not login:
         try:
             data = conn_socket.recv(16384).decode()
-            if not data:
-                return
+            if not data: return
             buffer += data
 
             while "\n" in buffer:
@@ -133,24 +137,18 @@ def client_handler(conn_socket):
                             login = user_login
                 elif msg.startswith("LOGIN"):
                     _, user_login, hashed_ps = msg.split("|")
-
                     with get_connection() as conn:
                         cursor = conn.cursor()
-
                         cursor.execute(
                             "SELECT Banned FROM Users WHERE Login=? AND PasswordHash=?",
                             (user_login, hashed_ps)
                         )
                         row = cursor.fetchone()
-
                         if row:
-                            banned = row[0]
-
-                            if banned:
+                            if row[0]:
                                 send_secure_msg(conn_socket, "ERROR|You are banned!")
                                 conn_socket.close()
                                 return
-
                             send_secure_msg(conn_socket, "OK|Success")
                             login = user_login
                         else:
@@ -165,8 +163,7 @@ def client_handler(conn_socket):
             photo_buffer = ""
             while True:
                 chunk = conn_socket.recv(16384).decode()
-                if not chunk:
-                    return
+                if not chunk: return
                 photo_buffer += chunk
                 if "\n" in photo_buffer:
                     raw_photo, _ = photo_buffer.split("\n", 1)
@@ -175,10 +172,7 @@ def client_handler(conn_socket):
                         _, login_name, img = msg.split("|", 2)
                         with get_connection() as conn:
                             cursor = conn.cursor()
-                            cursor.execute(
-                                "UPDATE Users SET Photo=? WHERE Login=?",
-                                (img, login_name)
-                            )
+                            cursor.execute("UPDATE Users SET Photo=? WHERE Login=?", (img, login_name))
                             conn.commit()
                     break
         except:

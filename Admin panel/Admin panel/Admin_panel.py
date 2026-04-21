@@ -69,7 +69,7 @@ class AdminPanel:
         self.current_path = path
         self.parent_path = parent
         self.active_lb.delete(0, "end")
-        self.active_lb.insert("end", "[..] GO UP")
+        self.active_lb.insert("end","[PRESS TO GO UP]")
         
         if items_str.startswith("ERROR"):
             self.active_lb.insert("end", items_str)
@@ -192,7 +192,7 @@ class AdminPanel:
         if match_data and match_data[2]:
             p1, p2, moves_str = match_data
             pos_map = {0:"Top-L", 1:"Top-C", 2:"Top-R", 3:"Mid-L", 4:"Center", 5:"Mid-R", 6:"Bot-L", 7:"Bot-C", 8:"Bot-R"}
-            text_area.insert("end", f"X: {p1} | O: {p2}\n" + "-"*30 + "\n")
+            text_area.insert("end", f"X: {p1} | O: {p2}\n" + "-------------------------" + "\n")
             for i, move_idx in enumerate(moves_str.split(',')):
                 if not move_idx: continue
                 text_area.insert("end", f"Move {i+1}: {'X' if i%2==0 else 'O'} -> {pos_map.get(int(move_idx), '?')}\n")
@@ -241,10 +241,13 @@ class AdminPanel:
             with self.get_conn() as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT Banned FROM Users WHERE Login=?", (login,))
-                conn.cursor().execute("UPDATE Users SET Banned=? WHERE Login=?", (int(not cursor.fetchone()[0]), login))
+                current = cursor.fetchone()[0]
+                cursor.execute("UPDATE Users SET Banned=? WHERE Login=?", (int(not current), login))
                 conn.commit()
             self.perform_search()
-        except: pass
+
+        except:
+            pass
 
     def delete_user(self):
         login = self.get_selected_login()
